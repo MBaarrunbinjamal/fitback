@@ -1,163 +1,83 @@
+require("dotenv").config();
 
-require('dotenv').config();
+const express = require("express");
+const cors = require("cors");
+const { MongoClient } = require("mongodb");
 
-const express = require('express');
-const { MongoClient } = require('mongodb');
-const cors = require('cors');
+const routes = require("../routes/routes");
 
 const app = express();
 
-// ========================================
-// CORS
-// ========================================
-
 const allowedOrigins = [
-    'http://localhost:3000',
-    'https://fitfront-jr3i18fgn-baarrun.vercel.app'
+    "http://localhost:3000",
+    "https://fitfront-jr3i18fgn-baarrun.vercel.app",
+    "https://fitfront-jr3i18fgn-baarrun.vercel.app/"
 ];
 
 app.use((req, res, next) => {
     const origin = req.headers.origin;
 
-    if (origin && allowedOrigins.includes(origin)) {
-        res.header('Access-Control-Allow-Origin', origin);
+    if (allowedOrigins.includes(origin)) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
     }
 
-    res.header(
-        'Access-Control-Allow-Methods',
-        'GET,POST,PUT,PATCH,DELETE,OPTIONS'
+    res.setHeader(
+        "Access-Control-Allow-Methods",
+        "GET,POST,PUT,PATCH,DELETE,OPTIONS"
     );
 
-    res.header(
-        'Access-Control-Allow-Headers',
-        'Content-Type, Authorization'
+    res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization"
     );
 
-    // Handle browser CORS preflight immediately
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(204);
+    if (req.method === "OPTIONS") {
+        return res.status(204).end();
     }
 
     next();
 });
 
-// ========================================
-// Middleware
-// ========================================
-
 app.use(express.json());
 
-app.use('/uploads', express.static('uploads'));
+app.use("/uploads", express.static("uploads"));
 
-// ========================================
-// MongoDB
-// ========================================
+const client = new MongoClient(process.env.MONGO_URI);
 
-const MONGO_URI = process.env.MONGO_URI;
-const DB_NAME = process.env.DB_NAME;
+let dbPromise;
 
-if (!MONGO_URI) {
-    console.error('❌ MONGO_URI is missing');
-    process.exit(1);
-}
-
-if (!DB_NAME) {
-    console.error('❌ DB_NAME is missing');
-    process.exit(1);
-}
-
-const client = new MongoClient(MONGO_URI);
-
-let db = null;
-let connectingPromise = null;
-
-// ========================================
-// Database Connection
-// ========================================
-
-async function connectDB() {
-    // Already connected
-    if (db) {
-        return db;
-    }
-
-    // Connection already in progress
-    if (connectingPromise) {
-        return connectingPromise;
-    }
-
-    connectingPromise = client.connect()
-        .then(() => {
-            db = client.db(DB_NAME);
-
-            console.log('✅ MongoDB connected successfully');
-            console.log(`✅ Database: ${DB_NAME}`);
-
-            return db;
-        })
-        .catch((error) => {
-            connectingPromise = null;
-
-            console.error('❌ MongoDB connection error:', error);
-
-            throw error;
+async function getDB() {
+    if (!dbPromise) {
+        dbPromise = client.connect().then(() => {
+            console.log("✅ MongoDB connected");
+            return client.db(process.env.DB_NAME);
         });
+    }
 
-    return connectingPromise;
+    return dbPromise;
 }
-
-// ========================================
-// Database Middleware
-// ========================================
 
 app.use(async (req, res, next) => {
     try {
-        req.db = await connectDB();
+        req.db = await getDB();
         next();
     } catch (error) {
-        console.error('❌ Database middleware error:', error);
+        console.error("❌ Database connection error:", error);
 
-        return res.status(500).json({
+        res.status(500).json({
             success: false,
-            message: 'Database connection failed'
+            message: "Database connection failed"
         });
     }
 });
 
-// ========================================
-// Routes
-// ========================================
+app.use("/api", routes);
 
-const routes = require('./routes/routes');
-
-app.use('/api', routes);
-
-// ========================================
-// Health Check
-// ========================================
-
-app.get('/', (req, res) => {
-    res.status(200).json({
+app.get("/", (req, res) => {
+    res.json({
         success: true,
-        message: 'Fitness API is running'
+        message: "Fitness API is running"
     });
 });
 
-// ========================================
-// Start Server
-// ========================================
-
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-});
-
-// ========================================
-// Optional local initialization
-// ========================================
-
-connectDB().catch(() => {
-    // Request middleware will retry/handle connection failures.
-});
-
+module.exports = app;
