@@ -10,7 +10,11 @@ const { sendAllDailyNutritionEmails } = require('./controllers/user/nutritionCon
 
 const app = express();
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+    origin: "https://fitfront-jr3i18fgn-baarrun.vercel.app",
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+}));
 app.use('/uploads', express.static('uploads'));
 
 let db;
