@@ -1,21 +1,13 @@
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-
 const { sendVerificationEmail } = require('../../utils/email');
-const { getDB } = require('../../utils/db');
 
+// Register User
 exports.register = async (req, res) => {
     try {
-        const {
-            username,
-            email,
-            password,
-            confirmPassword
-        } = req.body;
-
-        // =========================
-        // Validate fields
-        // =========================
+        const { username, email, password, confirmPassword } = req.body;
+        const db = req.db;
 
         if (!username || !email || !password || !confirmPassword) {
             return res.status(400).json({
@@ -24,10 +16,6 @@ exports.register = async (req, res) => {
             });
         }
 
-        // =========================
-        // Check passwords
-        // =========================
-
         if (password !== confirmPassword) {
             return res.status(400).json({
                 success: false,
@@ -35,23 +23,8 @@ exports.register = async (req, res) => {
             });
         }
 
-        // =========================
-        // Get MongoDB
-        // =========================
-
-        const db = await getDB();
-
-        console.log('✅ DB available in register:', !!db);
-
-        // =========================
-        // Check existing user
-        // =========================
-
         const existingUser = await db.collection('users').findOne({
-            $or: [
-                { username: username },
-                { email: email }
-            ]
+            $or: [{ username }, { email }]
         });
 
         if (existingUser) {
@@ -61,86 +34,36 @@ exports.register = async (req, res) => {
             });
         }
 
-        // =========================
-        // Hash password
-        // =========================
-
         const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
 
-        const hashedPassword = await bcrypt.hash(
-            password,
-            salt
-        );
-
-        // =========================
-        // Verification token
-        // =========================
-
-        const verificationToken = crypto
-            .randomBytes(32)
-            .toString('hex');
-
-        const verificationExpiry = new Date(
-            Date.now() + 24 * 60 * 60 * 1000
-        );
-
-        // =========================
-        // New user
-        // =========================
+        const verificationToken = crypto.randomBytes(32).toString('hex');
+        const verificationExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
         const newUser = {
             username,
             email,
             password: hashedPassword,
-
             role: 'user',
-
             status: 'pending',
-
             subscriber: false,
-
             isVerified: false,
-
-            verificationToken,
-
-            verificationExpiry,
-
+            verificationToken: verificationToken,
+            verificationExpiry: verificationExpiry,
             createdAt: new Date(),
-
             updatedAt: new Date()
         };
 
-        // =========================
-        // Insert user
-        // =========================
+        const result = await db.collection('users').insertOne(newUser);
 
-        const result = await db
-            .collection('users')
-            .insertOne(newUser);
-
-        // =========================
-        // Send verification email
-        // =========================
-
-        sendVerificationEmail(
-            email,
-            verificationToken
-        ).catch((err) => {
-            console.error(
-                'Failed to send verification email:',
-                err
-            );
+        // Fire-and-forget: don't let email failures block registration
+        sendVerificationEmail(email, verificationToken).catch(err => {
+            console.error('Failed to send verification email:', err);
         });
-
-        // =========================
-        // Success
-        // =========================
 
         return res.status(201).json({
             success: true,
-            message:
-                'User registered successfully. Please verify your email.',
-
+            message: 'User registered successfully. Please verify your email.',
             user: {
                 id: result.insertedId,
                 username,
@@ -149,12 +72,7 @@ exports.register = async (req, res) => {
         });
 
     } catch (error) {
-
-        console.error(
-            '❌ Register error:',
-            error
-        );
-
+        console.error('Register error:', error);
         return res.status(500).json({
             success: false,
             message: 'Server error'
