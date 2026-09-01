@@ -11,15 +11,22 @@ const app = express();
 const allowedOrigins = [
     "http://localhost:3000",
     "https://fitfront-two.vercel.app",
-    "https://fitfront-jr3i18fgn-baarrun.vercel.app",
-    "https://fitfront-jr3i18fgn-baarrun.vercel.app/"
+    process.env.FRONTEND_URI
+].filter(Boolean);
 
-];
+// Matches any Vercel preview deployment for this project, e.g.
+// https://fitfront-b591puvyh-baarrun.vercel.app
+const previewOriginPattern = /^https:\/\/fitfront-[a-z0-9]+-baarrun\.vercel\.app$/;
+
+function isAllowedOrigin(origin) {
+    if (!origin) return false;
+    return allowedOrigins.includes(origin) || previewOriginPattern.test(origin);
+}
 
 app.use((req, res, next) => {
     const origin = req.headers.origin;
 
-    if (allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
         res.setHeader("Access-Control-Allow-Origin", origin);
     }
 
@@ -50,10 +57,15 @@ let dbPromise;
 
 async function getDB() {
     if (!dbPromise) {
-        dbPromise = client.connect().then(() => {
-            console.log("✅ MongoDB connected");
-            return client.db(process.env.DB_NAME);
-        });
+        dbPromise = client.connect()
+            .then(() => {
+                console.log("✅ MongoDB connected");
+                return client.db(process.env.DB_NAME);
+            })
+            .catch((error) => {
+                dbPromise = null; // clear cache so the next request retries instead of reusing a dead connection
+                throw error;
+            });
     }
 
     return dbPromise;
