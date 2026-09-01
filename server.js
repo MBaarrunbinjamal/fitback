@@ -10,8 +10,10 @@ const app = express();
 
 const allowedOrigins = [
     "http://localhost:3000",
+    "https://fitfront-two.vercel.app",
     "https://fitfront-jr3i18fgn-baarrun.vercel.app",
     "https://fitfront-jr3i18fgn-baarrun.vercel.app/"
+
 ];
 
 app.use((req, res, next) => {
